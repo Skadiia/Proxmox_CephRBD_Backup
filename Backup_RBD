@@ -1,0 +1,440 @@
+#!/bin/bash
+
+#CONSTANTES VERSION PROGRAMME
+declare -r VERSION=0.2
+declare -r NAME=Backup_RBD
+declare -r MAINTAINER=Skadia
+
+#CONSTANTES PATHS
+declare -r PVE_DIR="/etc/pve"
+declare -r PVE_NODES="$PVE_DIR/nodes"
+declare -r QEMU='qemu-server'
+declare -r QEMU_CONF="$PVE_NODES/*/$QEMU"
+declare -r LOG_FILE="/var/log/$NAME/ceph_backup_$(date %Y-%d-%m).log"
+
+#VARIABLES OPTIONS COMMANDE
+declare opt_id_vms=''
+declare opt_backup_dir=''
+declare opt_dayfull_backup=''
+declare opt_backup_dir=''
+declare opt_addr_mail=''
+declare -i opt_keepbackup=1
+
+declare id_vms
+declare addr_mail=''
+declare backup_dir=''
+declare result=$?
+
+
+#FONCTION PAGE DE MAN
+function man() {
+  shift
+
+  cat << "EOF"
+NAME:
+        $NAME est un outil de sauvegarde ProxmoxVE / CephRBD
+
+SYNOPSIS:
+        $NAME OPTION [PARAMETERS]=[OPTIONS]
+
+OPTIONS:
+        $NAME version
+            Affiche la version du programme
+
+        $NAME help
+            Affiche cette page et sort du programme
+
+        $NAME create
+            Créer une tâche de sauvegarde planifiée
+
+        $NAME remove
+            Supprime une tâche de sauvegarde existante
+
+        $NAME enable
+            Active une tâche de sauvegarde existante
+
+        $NAME disable
+            Désactive une tâche de sauvegarde existante
+
+        $NAME backup
+            Sauvegarde une ou plusieurs VMs
+
+        $NAME restore
+            Restaure une ou plusieurs sauvegardes
+
+        $NAME show
+            Affiche les sauvegardes existante pour une VM
+
+PARAMETERS:
+        --vmid=<string>
+            Spécifie le ou les numéros de VM à sauvegarder (si plusieurs séparer les vmids par une virgule)
+            \"all\" pour un backup de toutes les VMs
+
+        --dayfull=<string>
+            Spécifie le jour de la semaine où le backup complet doit être réalisé
+
+        --keep=<int>
+            Spécifie le nombre de sauvegarde à conserver dans le backupdir
+
+        --backupdir=<string>
+            Spécifie le repertoire de destination des sauvegardes
+
+        --mail=<string>
+            Spécifie une ou plusieurs adresse mail pour l\'envoi des logs du jour
+
+REPORTING BUGS:
+        skadia@protonmail.com
+EOF
+
+  exit 1
+
+}
+
+# Fonction d'écriture des logs
+function syslog() {
+  local type=$1
+  shift
+
+  local message=$*
+
+  case $type in
+    alert)
+      echo -e "ALERT: $message";;
+    info)
+      echo -e "[$(date +%Y-%m-%d--%H:%M:%S)] $message" >> $LOG_FILE;;
+    erreur)
+      echo -e "ERREUR: [$(date +%Y-%m-%d--%H:%M:%S)] $message" >> $LOG_FILE;;
+    *)
+      echo -e "[$(date +%Y-%m-%d--%H:%M:%S)] $message\033[0m"
+      echo -e "[$(date +%Y-%m-%d--%H:%M:%S)] $message\033[0m" >> $LOG_FILE
+      exit 1
+      ;;
+  esac
+
+}
+
+
+# Fonction permettant de parser les options de la commande
+function parsing_options() {
+  local commande=$1
+  shift
+
+  local GET_OPT
+  GET_OPT=$(getopt --options '' --long=vmid:,dayfull:,keep:,backupdir:,mail: --name "$NAME" -- "$@") || exit 123
+
+  eval set -- "$GET_OPT"
+
+  while true; do
+    case "$1" in
+      --vmid) opt_id_vms=$2; shift 2;;
+      --dayfull) opt_dayfull_backup=$2; shift 2;;
+      --keep) opt_keepbackup=$2; shift 2;;
+      --backupdir) opt_backup_dir=$2; shift 2;;
+      --mail) opt_addr_mail=$2; shift 2;;
+      --) shift; break;;
+      *) break;;
+    esac
+  done
+
+#Vérification des erreurs / oublies de saisie
+  if [[ ! -d "$opt_backup_dir" ]]; then
+    syslog alert "Le répertoire de destination n'existe pas dir:$opt_backup_dir"
+    exit 1
+  fi
+
+  if [[ -z "$opt_id_vms" ]]; then
+    syslog alert "Veuillez saisir au moins un VM id"
+    exit 1
+  fi
+
+  if [[ $opt_keepbackup -lt 1 ]]; then
+    syslog alert "La durée de rétention ne peut pas être inférieur à 1 jour"
+    exit 1
+  fi
+
+  if [[ -z "$opt_dayfull_backup" ]]; then
+    syslog alert "Veuillez saisir un jour de sauvegarde complète correct"
+    exit 1
+  fi
+
+  if [[ -z "$opt_addr_mail" ]]; then
+    syslog alert "Aucun récapitulatif mail ne seras envoyé"
+  else
+    addr_mail=$(echo "$opt_addr_mail"|tr "," "\n")
+  fi
+
+  if [[ "$opt_id_vms" = "all" ]]; then
+    id_vms=$(ls $QEMU_CONF/*.conf|cut -d "/" -f 7|cut -d "." -f 1)
+  else
+    id_vms=$(echo "$opt_id_vms"|tr "," "\n")
+  fi
+
+}
+
+
+#Fonction création de la tâche de sauvegarde automatisée
+function action_cron() {
+  local commande=$1
+  parsing_options "$@"
+
+  local -r cron_file="/etc/cron.d/$NAME"
+  local -r command_task="backup --vmid=$opt_id_vms --dayfull='$opt_dayfull_backup' --backupdir='$opt_backup_dir' --keep='$opt_keepbackup' --mail='$opt_addr_mail'"
+
+# Création du fichier cron si il n'existe pas
+
+  if [[ ! -e "$cron_file" ]]; then
+    cat > "$cron_file" << "EOL"
+\# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
+\# Fichier généré automatiquement - ne pas éditer
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+EOL
+  fi
+
+# Vérifie si la tâche existe déjà
+  if [[ "$commande" = "create" ]]; then
+    if [[ -n $(grep -h "$command_task" "$cron_file") ]]; then
+      syslog alert "La tâche planifiée existe déjà"
+      exit 1
+    fi
+  fi
+
+  case $commande in
+    create)
+      local cron_cycle="@daily"
+
+      local cron_job="$cron_cycle root $NAME $command_task"
+      echo -e "$cron_job" >> "$cron_file"
+      ;;
+
+    remove) sed -i "/^.*$command_task.*$/d" "$cron_file";;
+    enable) sed -i "s/^#\(.*$command_task.*\)$/\1/" "$cron_file";;
+    disable) sed -i "s/^\(.*$command_task.*\)$/#\1/" "$cron_file";;
+
+  esac
+
+  echo -e "$commande ===> $command_task"
+
+}
+
+
+# Fonction de sauvegarde des conf + VMs
+function backup() {
+  parsing_options "$@"
+
+  local log_dir="/var/log/$NAME"
+  if [[ ! -d $log_dir ]]; then
+    mkdir -p "$log_dir"
+  fi
+
+  local date_today=$(date +%Y-%m-%d)
+
+  for vm in $id_vms; do
+    local conf_file=''
+
+    syslog info "\n ========== Début de la sauvegarde de: $vm ========== \n"
+
+
+# Creér si besoin un répertoire au nom de la vm dans le backup_dir
+    local backup_dir="$opt_backup_dir/$vm"
+    if [[ ! -d $backup_dir ]]; then
+      mkdir -p "$backup_dir"
+      if [[ $result = 0 ]]; then
+        syslog info "Répertoire de sauvegarde $backup_dir a été crée avec succès"
+      else
+        syslog erreur "Impossible de créer le répertoire de sauvegarde $backup_dir"
+      fi
+    fi
+
+
+# Sauvegarde du fichier de configuration de la VM
+    cp $QEMU_CONF/$vm.conf $backup_dir
+
+    if [[ $result = 0 ]]; then
+      syslog info "La sauvegarde du fichier de configuration de la VM $vm s'est bien déroulée"
+    else
+      syslog erreur "Une erreur est survenue lors de la sauvegarde du fichier de configuration de la VM $vm"
+    fi
+
+# Récupère les noms des disques de la VM
+    local disks=''
+    disks=$(cat /etc/pve/nodes/*/qemu-server/$vm.conf|grep vm-$vm-disk|cut -d ":" -f 3|awk -F "," '{print $1}')
+
+    for disk in $disks; do
+      local backup_file="$backup_dir/$disk@$date_today"
+      local image_spec=''
+      image_spec=$(cat /etc/pve/nodes/*/qemu-server/$vm.conf|grep $disk|cut -d ":" -f 2,3|cut -d "," -f 1)
+      local rbd_pool=''
+      rbd_pool=$(pvesm path $image_spec | awk '{ split($0,a,":"); print a[2]}' | awk '{ split($0,a,"/"); print a[1]}')
+      local latest_snap=$(rbd snap ls $rbd_pool/$disk|awk '{ print $2 }' |sort| head -n 1)
+
+
+
+      syslog info "\n ========== Début de la sauvegarde de: $disk ========== \n"
+# Création du snapshot quotidien pour le disque
+      if [[ -z $(rbd snap ls $rbd_pool/$disk | grep $date_today) ]]; then
+        syslog info "Création du snapshot du jour: $rbd_pool/$disk@$date_today"
+        rbd snap create $rbd_pool/$disk@$date_today
+
+        if [[ $result = 0 ]]; then
+          syslog info "Le snapshot du jour: $rbd_pool/$disk@$date_today a été crée avec succès"
+        else
+          syslog erreur "Une erreur est survenue le de la création du snapshot du jour"
+        fi
+
+      else
+        syslog erreur "Le snapshot du jour: $rbd_pool/$disk@$date_today existe déjà"
+      fi
+
+# Check for Full or Diff export
+      if [[ -z $(ls $backup_dir/$disk*-Full 2>/dev/null) ]] || [[ $(date +%u) -eq $opt_dayfull_backup ]]; then
+        syslog info "Début de la sauvegarde complète de $disk"
+        rbd export $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Full
+
+        if [[ $result = 0 ]]; then
+          syslog info "Sauvegarde complète de $disk effectuée --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
+        else
+          syslog erreur "Une erreur est survenue lors de l'export complet de $disk"
+        fi
+
+      else
+        syslog info "Début sauvegarde différentielle de $disk"
+
+        rbd export-diff --from-snap  $latest_snap $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Diff
+
+        if [[ $result = 0 ]]; then
+          syslog info "Sauvegarde différentielle de $disk effectuée --> $(ls -lh $backup_dir/$disk@$date_today-Diff|awk '{ print $5 }' )"
+        else
+          syslog erreur "Une erreur est survenue lors de l'export différentiel de $disk"
+        fi
+      fi
+
+      if [[ -n $latest_snap ]]; then
+        rbd snap rm $rbd_pool/$disk@$latest_snap
+
+        if [[ $result = 0 ]]; then
+          syslog info "Le snapshot de la veille a bien été supprimé"
+        else
+          syslog erreur "Une erreur est survenue lors de la suppression du snapshot de la veille"
+        fi
+      else
+        continue
+      fi
+
+      opt_keepbackup=$((opt_keepbackup+1))
+      rm -f $backup_dir/$disk@$(date +%Y-%m-%d --date="$opt_keepbackup days ago")*
+      rm -f /var/log/$NAME/ceph_backup_$(date +%Y-%m-%d --date="$opt_keepbackup days ago")*
+
+    done
+  done
+
+envoi_mail
+
+}
+
+
+function envoi_mail() {
+  for mail in $opt_addr_mail; do
+    cat "$LOG_FILE" | mail -s "Log $NAME" $mail
+  done
+}
+
+#function show_backup() {
+#  parsing_options "$@"
+
+#}
+
+function restore() {
+  parsing_options "$@"
+
+
+  for vm in $id_vms; do
+    local conf_file=''
+    local backup_dir="$opt_backup_dir/$vm"
+
+    local date_avalaible=$(ls -l $backup_dir | awk '{ print $9 }' | cut -d "@" -f 2 | cut -d "-" -f 1,2,3)
+
+    echo "Saisir la date à laquelle restorer la VM: \n"
+    read date_restore
+
+    syslog info "========== Début de la restauration de $id_vms à la date du $date_restore =========="
+
+    local disks=''
+    disks=$(cat /etc/pve/nodes/*/qemu-server/$vm.conf|grep vm-$vm-disk|cut -d ":" -f 3|awk -F "," '{print $1}')
+
+    for disk in $disks; do
+      local image_spec=''
+      image_spec=$(cat /etc/pve/nodes/*/qemu-server/$vm.conf|grep $disk|cut -d ":" -f 2,3|cut -d "," -f 1)
+      local rbd_pool=''
+      rbd_pool=$(pvesm path $image_spec | awk '{ split($0,a,":"); print a[2]}' | awk '{ split($0,a,"/"); print a[1]}')
+
+
+      for backup_file in $backup_dir/*$disk*; do
+        # Import complet
+        if [[ $backup_file == *-Full ]]; then
+          syslog info "Import du backup complet initial $backup_file"
+          rbd snap purge $rbd_pool/$disk
+          rbd rm $rbd_pool/$disk
+          rbd import $backup_file $rbd_pool/$disk
+
+          if [[ $result = 0 ]]; then
+            syslog info "L'import du backup complet initial s'est déroulé avec succès"
+          else
+            syslog erreur "Une erreur est survenue lors l'import du backup complet initial"
+            exit 1
+          fi
+
+          # Création snapshot initial
+          local date_last_full=$(echo $backup_file|cut -d '@' -f 2|cut -d '-' -f 1,2,3)
+          rbd snap create $rbd_pool/$disk@$date_last_full
+
+          if [[ $result = 0 ]]; then
+            syslog info "La création du snapshot de restauration initial s'est déroulé avec succès"
+          else
+            syslog erreur "Une erreur est survenue lors de la création du snapshot de restauration initial"
+            exit 1
+          fi
+
+        else
+          syslog info "Import du backup différentiel $backup_file"
+          rbd import-diff $backup_file $rbd_pool/$disk
+
+          if [[ $result = 0 ]]; then
+            syslog info "L'import du backup différentiel s'est déroulé avec succès"
+          else
+            syslog erreur "Une erreur est survenue lors de l'import du backup différentiel"
+            exit 1
+          fi
+        fi
+
+        [[ $backup_file == "$backup_dir/$disk@$date_restore"* ]] && break;
+      done
+    done
+    # remove snap
+    syslog info "La restauration de la vm: $vm s'est bien déroulée"
+    syslog info "Il est possible de devoir créer une nouvelle VM et reprendre le fichier de configuration sauvegardé en l'adaptant si besoin est"
+  done
+
+envoi_mail
+
+}
+
+########### MAIN FONCTION ###########
+function main() {
+  [ $# = O ] && man;
+
+# Recuperation de l'action
+  case "$1" in
+    version) echo "\033[1;33mProgram: $NAME\nVersion: $VERSION\nMaintainer: $MAINTAINER\033[0m";;
+    help|h) man;;
+    create|remove|enable|disable) action_cron "$@";;
+    backup) backup "$@";;
+    restore) restore "$@";;
+    show) show_backup "$@";;
+    *) man;;
+  esac
+
+  exit 0;
+}
+
+main "$@"
