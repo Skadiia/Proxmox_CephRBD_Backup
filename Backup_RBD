@@ -15,7 +15,7 @@ declare -r LOG_FILE="/var/log/$NAME/ceph_backup_$(date %Y-%d-%m).log"
 #VARIABLES OPTIONS COMMANDE
 declare opt_id_vms=''
 declare opt_backup_dir=''
-declare opt_dayfull_backup=''
+declare opt_dayfull_backup=7
 declare opt_backup_dir=''
 declare opt_addr_mail=''
 declare -i opt_keepbackup=1
@@ -31,6 +31,14 @@ function man() {
   shift
 
   cat << "EOF"
+  ____           _       ____  ____  ____    ____             _
+ / ___|___ _ __ | |__   |  _ \| __ )|  _ \  | __ )  __ _  ___| | ___   _ _ __
+| |   / _ \  _ \|  _ \  | |_) |  _ \| | | | |  _ \ / _  |/ __| |/ / | | |  _ \
+| |__|  __/ |_) | | | | |  _ <| |_) | |_| | | |_) | (_| | (__|   <| |_| | |_) |
+ \____\___| .__/|_| |_| |_| \_\____/|____/  |____/ \__,_|\___|_|\_\\__,_| .__/
+          |_|                                                           |_|
+
+
 NAME:
         $NAME est un outil de sauvegarde ProxmoxVE / CephRBD
 
@@ -82,7 +90,7 @@ PARAMETERS:
         --mail=<string>
             Spécifie une ou plusieurs adresse mail pour l\'envoi des logs du jour
 
-REPORTING BUGS:
+CONTACT:
         skadia@protonmail.com
 EOF
 
@@ -147,16 +155,6 @@ function parsing_options() {
     exit 1
   fi
 
-  if [[ $opt_keepbackup -lt 1 ]]; then
-    syslog alert "La durée de rétention ne peut pas être inférieur à 1 jour"
-    exit 1
-  fi
-
-  if [[ -z "$opt_dayfull_backup" ]]; then
-    syslog alert "Veuillez saisir un jour de sauvegarde complète correct"
-    exit 1
-  fi
-
   if [[ -z "$opt_addr_mail" ]]; then
     syslog alert "Aucun récapitulatif mail ne seras envoyé"
   else
@@ -184,9 +182,10 @@ function action_cron() {
 
   if [[ ! -e "$cron_file" ]]; then
     cat > "$cron_file" << "EOL"
-\# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
-\# Fichier généré automatiquement - ne pas éditer
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
+# Fichier généré automatiquement - ne pas éditer
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 EOL
   fi
@@ -351,7 +350,7 @@ function restore() {
   for vm in $id_vms; do
     local conf_file=''
     local backup_dir="$opt_backup_dir/$vm"
-
+    local date_today=$(date +%Y-%m-%d)
     local date_avalaible=$(ls -l $backup_dir | awk '{ print $9 }' | cut -d "@" -f 2 | cut -d "-" -f 1,2,3)
 
     echo "Saisir la date à laquelle restorer la VM: \n"
@@ -409,6 +408,10 @@ function restore() {
 
         [[ $backup_file == "$backup_dir/$disk@$date_restore"* ]] && break;
       done
+
+      rbd snap purge $rbd_pool/$disk
+      rbd snap create $rbd_pool/$disk@$date_today
+
     done
     # remove snap
     syslog info "La restauration de la vm: $vm s'est bien déroulée"
