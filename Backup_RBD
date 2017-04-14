@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #CONSTANTES VERSION PROGRAMME
-declare -r VERSION=0.2
+declare -r VERSION=0.1
 declare -r NAME=Backup_RBD
 declare -r MAINTAINER=Skadia
 
@@ -15,10 +15,11 @@ declare -r LOG_FILE="/var/log/$NAME/ceph_backup_$(date %Y-%d-%m).log"
 #VARIABLES OPTIONS COMMANDE
 declare opt_id_vms=''
 declare opt_backup_dir=''
-declare opt_dayfull_backup=7
+declare -i opt_dayfull_backup=7
 declare opt_backup_dir=''
 declare opt_addr_mail=''
 declare -i opt_keepbackup=1
+declare opt_compress='off'
 
 declare id_vms
 declare addr_mail=''
@@ -70,9 +71,6 @@ OPTIONS:
         $NAME restore
             Restaure une ou plusieurs sauvegardes
 
-        $NAME show
-            Affiche les sauvegardes existante pour une VM
-
 PARAMETERS:
         --vmid=<string>
             Spécifie le ou les numéros de VM à sauvegarder (si plusieurs séparer les vmids par une virgule)
@@ -89,6 +87,8 @@ PARAMETERS:
 
         --mail=<string>
             Spécifie une ou plusieurs adresse mail pour l\'envoi des logs du jour
+        --compress=<string>
+            Active ou non la compression des sauvegardes (on/off, default=off)
 
 CONTACT:
         skadia@protonmail.com
@@ -128,7 +128,7 @@ function parsing_options() {
   shift
 
   local GET_OPT
-  GET_OPT=$(getopt --options '' --long=vmid:,dayfull:,keep:,backupdir:,mail: --name "$NAME" -- "$@") || exit 123
+  GET_OPT=$(getopt --options '' --long=vmid:,dayfull:,keep:,backupdir:,mail:,compress: --name "$NAME" -- "$@") || exit 123
 
   eval set -- "$GET_OPT"
 
@@ -139,6 +139,7 @@ function parsing_options() {
       --keep) opt_keepbackup=$2; shift 2;;
       --backupdir) opt_backup_dir=$2; shift 2;;
       --mail) opt_addr_mail=$2; shift 2;;
+      --compress) opt_compress=$2; shift 2;;
       --) shift; break;;
       *) break;;
     esac
@@ -152,6 +153,11 @@ function parsing_options() {
 
   if [[ -z "$opt_id_vms" ]]; then
     syslog alert "Veuillez saisir au moins un VM id"
+    exit 1
+  fi
+
+  if [[ "$opt_compress" != "on" ]] || [[ "$opt_compress" != "off" ]]; then
+    syslog alert "La valeur de --compress peut seulement être on ou off"
     exit 1
   fi
 
@@ -176,7 +182,7 @@ function action_cron() {
   parsing_options "$@"
 
   local -r cron_file="/etc/cron.d/$NAME"
-  local -r command_task="backup --vmid=$opt_id_vms --dayfull='$opt_dayfull_backup' --backupdir='$opt_backup_dir' --keep='$opt_keepbackup' --mail='$opt_addr_mail'"
+  local -r command_task="backup --vmid=$opt_id_vms --dayfull='$opt_dayfull_backup' --backupdir='$opt_backup_dir' --keep='$opt_keepbackup' --mail='$opt_addr_mail' --compress='$opt_compress'"
 
 # Création du fichier cron si il n'existe pas
 
@@ -296,6 +302,12 @@ function backup() {
           syslog erreur "Une erreur est survenue lors de l'export complet de $disk"
         fi
 
+        if [[ "$opt_compress" == "on" ]]; then
+          syslog info "Compression de $disk en cours..."
+          tar -I pigz -cvf $backup_dir/$disk@$date_today-Full
+        fi
+
+
       else
         syslog info "Début sauvegarde différentielle de $disk"
 
@@ -306,6 +318,12 @@ function backup() {
         else
           syslog erreur "Une erreur est survenue lors de l'export différentiel de $disk"
         fi
+
+        if [[ "$opt_compress" == "on" ]]; then
+          syslog info "Compression de $disk en cours..."
+          tar -I pigz -cvf $backup_dir/$disk@$date_today-Diff
+        fi
+
       fi
 
       if [[ -n $latest_snap ]]; then
@@ -331,17 +349,11 @@ envoi_mail
 
 }
 
-
 function envoi_mail() {
   for mail in $opt_addr_mail; do
     cat "$LOG_FILE" | mail -s "Log $NAME" $mail
   done
 }
-
-#function show_backup() {
-#  parsing_options "$@"
-
-#}
 
 function restore() {
   parsing_options "$@"
@@ -369,6 +381,12 @@ function restore() {
 
 
       for backup_file in $backup_dir/*$disk*; do
+
+        if [[ "$opt_compress" == "on" ]]; then
+          syslog info "Décompression du fichier à restorer en cours..."
+          tar -xzvf $backup_dir/$backup_file
+        fi
+
         # Import complet
         if [[ $backup_file == *-Full ]]; then
           syslog info "Import du backup complet initial $backup_file"
@@ -433,7 +451,6 @@ function main() {
     create|remove|enable|disable) action_cron "$@";;
     backup) backup "$@";;
     restore) restore "$@";;
-    show) show_backup "$@";;
     *) man;;
   esac
 
