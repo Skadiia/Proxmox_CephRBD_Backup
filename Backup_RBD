@@ -191,8 +191,8 @@ function action_cron() {
 
   if [[ ! -e "$cron_file" ]]; then
     cat > "$cron_file" << "EOL"
-# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
-# Fichier généré automatiquement - ne pas éditer
+\# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
+\# Fichier généré automatiquement - ne pas éditer
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
