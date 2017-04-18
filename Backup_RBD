@@ -71,6 +71,9 @@ OPTIONS:
         $NAME restore
             Restaure une ou plusieurs sauvegardes
 
+        $NAME list
+            Liste les sauvegardes existante pour une VM
+
 PARAMETERS:
         --vmid=<string>
             Spécifie le ou les numéros de VM à sauvegarder (si plusieurs séparer les vmids par une virgule)
@@ -219,6 +222,25 @@ EOL
   esac
 
   echo -e "$commande ===> $command_task"
+
+}
+
+# Fonction liste les sauvegardes existante pour une VM
+function list_backup() {
+  parsing_options "$@"
+
+  for vm in $id_vms; do
+    local backup_dir="$opt_backup_dir/$vm"
+    local report_file="/tmp/report$vm.txt"
+
+    if [[ ! -d $backup_dir ]]; then
+      syslog alert "Aucune sauvegarde existante pour $vm"
+    fi
+
+    ls -larth $backup_dir | grep "*$vm*" > $report_file
+    dialog --title "Sauvegarde existante pour $vm" --textbox $report_file 100 100
+    rm -f $report_file
+  done
 
 }
 
@@ -451,6 +473,7 @@ function main() {
     create|remove|enable|disable) action_cron "$@";;
     backup) backup "$@";;
     restore) restore "$@";;
+    list) list_backup "$@";;
     *) man;;
   esac
 
