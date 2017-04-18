@@ -5,7 +5,7 @@ declare -r VERSION=0.1
 declare -r NAME=Backup_RBD
 declare -r MAINTAINER=Skadia
 
-#CONSTANTES PATHS
+#CONSTANTES DIRECTORY
 declare -r PVE_DIR="/etc/pve"
 declare -r PVE_NODES="$PVE_DIR/nodes"
 declare -r QEMU='qemu-server'
@@ -360,6 +360,7 @@ function backup() {
         continue
       fi
 
+# Gestion de la rétention des sauvegardes
       opt_keepbackup=$((opt_keepbackup+1))
       rm -f $backup_dir/$disk@$(date +%Y-%m-%d --date="$opt_keepbackup days ago")*
       rm -f /var/log/$NAME/ceph_backup_$(date +%Y-%m-%d --date="$opt_keepbackup days ago")*
@@ -371,12 +372,14 @@ envoi_mail
 
 }
 
+# Fonction d'envoi des logs du jour
 function envoi_mail() {
   for mail in $opt_addr_mail; do
     cat "$LOG_FILE" | mail -s "Log $NAME" $mail
   done
 }
 
+# Fonction de restauration des sauvegardes
 function restore() {
   parsing_options "$@"
 
