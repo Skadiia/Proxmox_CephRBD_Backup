@@ -2,9 +2,11 @@ NAME:
       Backup_RBD est un outil de sauvegarde ProxmoxVE / CephRBD
 
 SYNOPSIS:
+
       Backup_RBD OPTION [PARAMETERS]=[OPTIONS]
 
 OPTIONS:
+
       Backup_RBD version
           Affiche la version du programme
 
@@ -33,6 +35,7 @@ OPTIONS:
           Liste les sauvegardes existante pour une VM
 
 PARAMETERS:
+
       --vmid=<string>
           Spécifie le ou les numéros de VM à sauvegarder (si plusieurs séparer les vmids par une virgule)
           \"all\" pour un backup de toutes les VMs
