@@ -10,7 +10,7 @@ declare -r PVE_DIR="/etc/pve"
 declare -r PVE_NODES="$PVE_DIR/nodes"
 declare -r QEMU='qemu-server'
 declare -r QEMU_CONF="$PVE_NODES/*/$QEMU"
-declare -r LOG_FILE="/var/log/$NAME/ceph_backup_$(date %Y-%d-%m).log"
+declare -r LOG_FILE="/var/log/$NAME/ceph_backup_$(date +%Y-%m-%d).log"
 
 #VARIABLES OPTIONS COMMANDE
 declare opt_id_vms=''
@@ -159,7 +159,7 @@ function parsing_options() {
     exit 1
   fi
 
-  if [[ "$opt_compress" != "on" ]] || [[ "$opt_compress" != "off" ]]; then
+  if [[ "$opt_compress" != "on" ]] && [[ "$opt_compress" != "off" ]]; then
     syslog alert "La valeur de --compress peut seulement être on ou off"
     exit 1
   fi
@@ -191,8 +191,8 @@ function action_cron() {
 
   if [[ ! -e "$cron_file" ]]; then
     cat > "$cron_file" << "EOL"
-\# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
-\# Fichier généré automatiquement - ne pas éditer
+# Tâche de sauvegarde automatisée pour Cluster ProxmoxVE / Ceph RBD
+# Fichier généré automatiquement - ne pas éditer
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
@@ -324,7 +324,7 @@ function backup() {
           syslog erreur "Une erreur est survenue lors de l'export complet de $disk"
         fi
 
-        if [[ "$opt_compress" == "on" ]]; then
+        if [[ "$opt_compress" = "on" ]]; then
           syslog info "Compression de $disk en cours..."
           tar -I pigz -cvf $backup_dir/$disk@$date_today-Full
         fi
@@ -341,7 +341,7 @@ function backup() {
           syslog erreur "Une erreur est survenue lors de l'export différentiel de $disk"
         fi
 
-        if [[ "$opt_compress" == "on" ]]; then
+        if [[ "$opt_compress" = "on" ]]; then
           syslog info "Compression de $disk en cours..."
           tar -I pigz -cvf $backup_dir/$disk@$date_today-Diff
         fi
@@ -374,7 +374,7 @@ envoi_mail
 
 # Fonction d'envoi des logs du jour
 function envoi_mail() {
-  for mail in $opt_addr_mail; do
+  for mail in $addr_mail; do
     cat "$LOG_FILE" | mail -s "Log $NAME" $mail
   done
 }
@@ -407,7 +407,7 @@ function restore() {
 
       for backup_file in $backup_dir/*$disk*; do
 
-        if [[ "$opt_compress" == "on" ]]; then
+        if [[ "$opt_compress" = "on" ]]; then
           syslog info "Décompression du fichier à restorer en cours..."
           tar -xzvf $backup_dir/$backup_file
         fi
