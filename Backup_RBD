@@ -160,7 +160,7 @@ function parsing_options() {
   fi
 
   if [[ "$opt_compress" != "on" ]] && [[ "$opt_compress" != "off" ]]; then
-    syslog alert "La valeur de --compress peut seulement être on ou off"
+    syslog alert "La valeur de --comprexss peut seulement être on ou off"
     exit 1
   fi
 
@@ -324,7 +324,7 @@ function backup() {
           syslog erreur "Une erreur est survenue lors de l'export complet de $disk"
         fi
 
-        if [[ "$opt_compress" = "on" ]]; then
+        if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
           tar -I pigz -cvf $backup_dir/$disk@$date_today-Full
         fi
@@ -341,7 +341,7 @@ function backup() {
           syslog erreur "Une erreur est survenue lors de l'export différentiel de $disk"
         fi
 
-        if [[ "$opt_compress" = "on" ]]; then
+        if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
           tar -I pigz -cvf $backup_dir/$disk@$date_today-Diff
         fi
@@ -407,7 +407,7 @@ function restore() {
 
       for backup_file in $backup_dir/*$disk*; do
 
-        if [[ "$opt_compress" = "on" ]]; then
+        if [[ "$opt_compress" == "on" ]]; then
           syslog info "Décompression du fichier à restorer en cours..."
           tar -xzvf $backup_dir/$backup_file
         fi
