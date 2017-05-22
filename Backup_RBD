@@ -19,7 +19,7 @@ declare -i opt_dayfull_backup=7
 declare opt_backup_dir=''
 declare opt_addr_mail=''
 declare -i opt_keepbackup=1
-declare opt_compress='off'
+declare opt_compress='on'
 
 declare id_vms
 declare addr_mail=''
@@ -122,6 +122,11 @@ function syslog() {
       ;;
   esac
 
+}
+
+# Fonction de vérification de la présence des outils nécessaires
+function check_requirements() {
+  #statements
 }
 
 
@@ -314,7 +319,7 @@ function backup() {
       fi
 
 # Check for Full or Diff export
-      if [[ -z $(ls $backup_dir/$disk*-Full 2>/dev/null) ]] || [[ $(date +%u) -eq $opt_dayfull_backup ]]; then
+      if [[ -z $(ls $backup_dir/$disk*-Full* 2>/dev/null) ]] || [[ $(date +%u) -eq $opt_dayfull_backup ]]; then
         syslog info "Début de la sauvegarde complète de $disk"
         rbd export $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Full
 
@@ -326,7 +331,7 @@ function backup() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
-          tar -I pigz -cvf $backup_dir/$disk@$date_today-Full
+          pigz --best $backup_dir/$disk@$date_today-Full
         fi
 
 
@@ -343,7 +348,7 @@ function backup() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
-          tar -I pigz -cvf $backup_dir/$disk@$date_today-Diff
+          pigz --best $backup_dir/$disk@$date_today-Diff
         fi
 
       fi
@@ -413,7 +418,7 @@ function restore() {
         fi
 
         # Import complet
-        if [[ $backup_file == *-Full ]]; then
+        if [[ $backup_file == *-Full* ]]; then
           syslog info "Import du backup complet initial $backup_file"
           rbd snap purge $rbd_pool/$disk
           rbd rm $rbd_pool/$disk

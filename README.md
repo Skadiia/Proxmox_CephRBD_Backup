@@ -61,5 +61,9 @@ PARAMETERS:
       --compress=<string>
           Active ou non la compression des sauvegardes (on/off, default=off)
 
+SETUP:
+
+      Copy the Backup_RBD into one of thoose directory (/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin)
+
 CONTACT:
       skadia@protonmail.com
