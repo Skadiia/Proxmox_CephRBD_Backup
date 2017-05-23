@@ -395,8 +395,10 @@ function restore() {
     local date_today=$(date +%Y-%m-%d)
     local date_avalaible=$(ls -l $backup_dir | awk '{ print $9 }' | cut -d "@" -f 2 | cut -d "-" -f 1,2,3)
 
-    echo "Saisir la date à laquelle restorer la VM: \n"
-    read date_restore
+    # Demande de saisie de la date à laquelle restaurer
+    exec 3>&1
+    date_restore=$(whiptail --title "Menu Restauration VM" --menu "Choisir la date à laquelle restaurer:" 25 60 15 2>&1 1>&3 $(ls -larth $backup_dir|grep -e ".*disk.*"|awk '{ print $9,$5 }'))
+    date_restore=$(echo $date_restore|sed 's/.*\([0-9]\{4\}-[0-1][0-9]-[0-9]\{2\}\).*/\1/')
 
     syslog info "========== Début de la restauration de $id_vms à la date du $date_restore =========="
 
@@ -414,7 +416,7 @@ function restore() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Décompression du fichier à restorer en cours..."
-          tar -xzvf $backup_dir/$backup_file
+          pigz -d $backup_file
         fi
 
         # Import complet
