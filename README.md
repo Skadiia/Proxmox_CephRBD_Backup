@@ -52,7 +52,7 @@ PARAMETERS:
       --mail=<string>
           Spécifie une ou plusieurs adresse mail pour l\'envoi des logs du jour
       --compress=<string>
-          Active ou non la compression des sauvegardes (on/off, default=off)
+          Active ou non la compression des sauvegardes (on/off, default=on)
 
 SETUP:
 
