@@ -208,7 +208,7 @@ EOL
 
   case $commande in
     create)
-      local cron_cycle="@daily"
+      local cron_cycle="0 21 * * *"
 
       local cron_job="$cron_cycle root $NAME $command_task"
       echo -e "$cron_job" >> "$cron_file"
