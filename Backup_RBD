@@ -124,12 +124,6 @@ function syslog() {
 
 }
 
-# Fonction de vérification de la présence des outils nécessaires
-function check_requirements() {
-  #statements
-}
-
-
 # Fonction permettant de parser les options de la commande
 function parsing_options() {
   local commande=$1
@@ -236,15 +230,13 @@ function list_backup() {
 
   for vm in $id_vms; do
     local backup_dir="$opt_backup_dir/$vm"
-    local report_file="/tmp/report$vm.txt"
 
     if [[ ! -d $backup_dir ]]; then
       syslog alert "Aucune sauvegarde existante pour $vm"
     fi
 
-    ls -larth $backup_dir | grep "*$vm*" > $report_file
-    dialog --title "Sauvegarde existante pour $vm" --textbox $report_file 100 100
-    rm -f $report_file
+    whiptail --title "Menu Restauration VM" --menu "Choisir la date à laquelle restaurer:" 25 60 15 $(ls -larth $backup_dir|grep -e ".*disk.*"|awk '{ print $9,$5 }')
+
   done
 
 }
@@ -380,7 +372,7 @@ envoi_mail
 # Fonction d'envoi des logs du jour
 function envoi_mail() {
   for mail in $addr_mail; do
-    cat "$LOG_FILE" | mail -s "Log $NAME" $mail
+    cat "$LOG_FILE" | mail -s "Log $NAME $(hostname)" $mail
   done
 }
 
