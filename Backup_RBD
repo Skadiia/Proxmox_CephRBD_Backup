@@ -303,7 +303,7 @@ function backup() {
         if [[ $result = 0 ]]; then
           syslog info "Le snapshot du jour: $rbd_pool/$disk@$date_today a été crée avec succès"
         else
-          syslog erreur "Une erreur est survenue le de la création du snapshot du jour"
+          syslog erreur "Une erreur est survenue lors de la création du snapshot du jour"
         fi
 
       else
@@ -313,7 +313,7 @@ function backup() {
 # Check for Full or Diff export
       if [[ -z $(ls $backup_dir/$disk*-Full* 2>/dev/null) ]] || [[ $(date +%u) -eq $opt_dayfull_backup ]]; then
         syslog info "Début de la sauvegarde complète de $disk"
-        rbd export $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Full
+        rbd export -rbd-concurrent-management-ops 20 $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Full
 
         if [[ $result = 0 ]]; then
           syslog info "Sauvegarde complète de $disk effectuée --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
@@ -324,13 +324,16 @@ function backup() {
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
           pigz --best $backup_dir/$disk@$date_today-Full
+          syslog info "Taille de $disk après compression --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
+        else
+          syslog info "SKIP... L'option de compression des backups n'a pas été activée"
         fi
 
 
       else
         syslog info "Début sauvegarde différentielle de $disk"
 
-        rbd export-diff --from-snap  $latest_snap $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Diff
+        rbd export-diff --from-snap -rbd-concurrent-management-ops 20 $latest_snap $rbd_pool/$disk@$date_today $backup_dir/$disk@$date_today-Diff
 
         if [[ $result = 0 ]]; then
           syslog info "Sauvegarde différentielle de $disk effectuée --> $(ls -lh $backup_dir/$disk@$date_today-Diff|awk '{ print $5 }' )"
@@ -340,7 +343,10 @@ function backup() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
-          pigz --best $backup_dir/$disk@$date_today-Diff
+            $backup_dir/$disk@$date_today-Diff
+            syslog info "Taille de $disk après compression --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
+        else
+          syslog info "SKIP... L'option de compression des backups n'a pas été activée"
         fi
 
       fi
@@ -416,7 +422,7 @@ function restore() {
           syslog info "Import du backup complet initial $backup_file"
           rbd snap purge $rbd_pool/$disk
           rbd rm $rbd_pool/$disk
-          rbd import $backup_file $rbd_pool/$disk
+          rbd import -rbd-concurrent-management-ops 20 $backup_file $rbd_pool/$disk
 
           if [[ $result = 0 ]]; then
             syslog info "L'import du backup complet initial s'est déroulé avec succès"
@@ -438,7 +444,7 @@ function restore() {
 
         else
           syslog info "Import du backup différentiel $backup_file"
-          rbd import-diff $backup_file $rbd_pool/$disk
+          rbd import-diff -rbd-concurrent-management-ops 20 $backup_file $rbd_pool/$disk
 
           if [[ $result = 0 ]]; then
             syslog info "L'import du backup différentiel s'est déroulé avec succès"
@@ -450,12 +456,13 @@ function restore() {
 
         [[ $backup_file == "$backup_dir/$disk@$date_restore"* ]] && break;
       done
-
+      
+      # remove snap
       rbd snap purge $rbd_pool/$disk
       rbd snap create $rbd_pool/$disk@$date_today
 
     done
-    # remove snap
+
     syslog info "La restauration de la vm: $vm s'est bien déroulée"
     syslog info "Il est possible de devoir créer une nouvelle VM et reprendre le fichier de configuration sauvegardé en l'adaptant si besoin est"
   done
