@@ -324,11 +324,6 @@ function backup() {
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
           pigz --best $backup_dir/$disk@$date_today-Full
-          syslog info "Taille de $disk après compression --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
-        else
-          syslog info "SKIP... L'option de compression des backups n'a pas été activée"
-        fi
-
 
       else
         syslog info "Début sauvegarde différentielle de $disk"
@@ -343,11 +338,7 @@ function backup() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
-            $backup_dir/$disk@$date_today-Diff
-            syslog info "Taille de $disk après compression --> $(ls -lh $backup_dir/$disk@$date_today-Full|awk '{ print $5 }' )"
-        else
-          syslog info "SKIP... L'option de compression des backups n'a pas été activée"
-        fi
+            pigz --best $backup_dir/$disk@$date_today-Diff
 
       fi
 
