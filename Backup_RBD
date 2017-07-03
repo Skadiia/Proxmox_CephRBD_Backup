@@ -324,6 +324,7 @@ function backup() {
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
           pigz --best $backup_dir/$disk@$date_today-Full
+        fi
 
       else
         syslog info "Début sauvegarde différentielle de $disk"
@@ -338,7 +339,8 @@ function backup() {
 
         if [[ "$opt_compress" == "on" ]]; then
           syslog info "Compression de $disk en cours..."
-            pigz --best $backup_dir/$disk@$date_today-Diff
+          pigz --best $backup_dir/$disk@$date_today-Diff
+        fi
 
       fi
 
