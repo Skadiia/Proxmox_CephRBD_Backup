@@ -1,11 +1,11 @@
-NAME:
+# Proxmox Ceph RBD Backup
       Backup_RBD est un outil de sauvegarde ProxmoxVE / CephRBD
 
-SYNOPSIS:
+# SYNOPSIS
 
       Backup_RBD OPTION [PARAMETERS]=[OPTIONS]
 
-OPTIONS:
+# OPTIONS
 
       Backup_RBD version
           Affiche la version du programme
@@ -34,7 +34,7 @@ OPTIONS:
       Backup_RBD list
           Liste les sauvegardes existante pour une VM
 
-PARAMETERS:
+# PARAMETERS
 
       --vmid=<string>
           Spécifie le ou les numéros de VM à sauvegarder (si plusieurs séparer les vmids par une virgule)
@@ -54,9 +54,7 @@ PARAMETERS:
       --compress=<string>
           Active ou non la compression des sauvegardes (on/off, default=on)
 
-SETUP:
-
+# SETUP
+      
       Copy the Backup_RBD into one of thoose directory (/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin)
 
-CONTACT:
-      skadia@protonmail.com
